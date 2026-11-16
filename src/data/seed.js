@@ -1,8 +1,6 @@
-// Demo data that mirrors the roomease_db schema in the project document
+// Starter data that mirrors the roomease_db schema in the project document
 // (users, room_types, rooms, bookings, payments, audit_logs).
 // Fields marked "UI only" are extras for the Airbnb-style cards and are NOT in the schema yet.
-
-import { addDays, today, nightsBetween } from '../lib/format';
 
 const roomTypes = [
   { type_id: 1, type_name: 'Single', description: 'One bed, private room', emoji: '🛏️' },
@@ -46,62 +44,15 @@ const rooms = [
   r(16, 'E503', 5, 1300, 4, 'Newly refurbished 4-bed dorm with fresh paint, new mattresses and extra sockets.', [wifi, dorm, water, sec], 4.86, 15, true),
 ];
 
-// NOTE: demo passwords are stored as plain text ONLY because this is a front-end mock.
-// The real backend must store password_hash with a secure algorithm such as bcrypt/argon2 (NFR2).
-const users = [
-  { user_id: 1, full_name: 'Hostel Admin', email: 'admin@roomease.ke', phone: '254700000001', password: 'admin123', role: 'admin', created_at: '2026-01-05' },
-  { user_id: 2, full_name: 'Amy Wanjiku', email: 'student@roomease.ke', phone: '254712345678', password: 'student123', role: 'student', created_at: '2026-01-10' },
-  { user_id: 3, full_name: 'Brian Otieno', email: 'brian@students.ke', phone: '254723456789', password: 'student123', role: 'student', created_at: '2026-02-02' },
-  { user_id: 4, full_name: 'Cynthia Achieng', email: 'cynthia@students.ke', phone: '254734567890', password: 'student123', role: 'student', created_at: '2026-02-14' },
-];
-
+// No demo accounts, bookings or payments any more: everything below is created by real
+// sign-ups and bookings. Only the rooms and room types are pre-loaded so the site isn't empty.
 export function buildSeed() {
-  const t = today();
-  const b = (booking_id, user_id, room_id, inOff, outOff, status, paid) => {
-    const check_in = addDays(t, inOff);
-    const check_out = addDays(t, outOff);
-    const room = rooms.find((x) => x.room_id === room_id);
-    return {
-      booking: {
-        booking_id, user_id, room_id, check_in, check_out,
-        total_amount: nightsBetween(check_in, check_out) * room.price_per_night,
-        status, approved_by: status === 'approved' ? 1 : null,
-        created_at: addDays(t, Math.min(inOff, 0) - 3),
-      },
-      payment: paid
-        ? {
-            payment_id: booking_id, booking_id,
-            phone_number: users.find((u) => u.user_id === user_id).phone,
-            amount: nightsBetween(check_in, check_out) * room.price_per_night,
-            mpesa_receipt_no: 'SKX' + (4820000 + booking_id * 137),
-            status: 'success', paid_at: addDays(t, Math.min(inOff, 0) - 3),
-          }
-        : null,
-    };
-  };
-
-  const seeded = [
-    b(1, 3, 1, -10, 20, 'approved', true),
-    b(2, 4, 4, -5, 25, 'approved', true),
-    b(3, 2, 7, -20, -10, 'approved', true),
-    b(4, 3, 11, 2, 12, 'pending', false),
-    b(5, 4, 14, -2, 28, 'approved', true),
-    b(6, 2, 9, 5, 9, 'pending', true),
-    b(7, 3, 12, -15, -8, 'cancelled', false),
-    b(8, 4, 6, 1, 6, 'approved', true),
-    b(9, 3, 8, -25, -12, 'approved', true),
-    b(10, 4, 15, -8, 22, 'approved', true),
-  ];
-
   return {
-    users,
+    users: [],
     room_types: roomTypes,
     rooms,
-    bookings: seeded.map((s) => s.booking),
-    payments: seeded.filter((s) => s.payment).map((s) => s.payment),
-    audit_logs: [
-      { log_id: 1, user_id: 1, action: 'Approved booking', entity: 'booking', entity_id: 1, logged_at: addDays(t, -9) },
-      { log_id: 2, user_id: 1, action: 'Added room', entity: 'room', entity_id: 16, logged_at: addDays(t, -7) },
-    ],
+    bookings: [],
+    payments: [],
+    audit_logs: [],
   };
 }
