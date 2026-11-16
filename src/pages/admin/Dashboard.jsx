@@ -26,6 +26,7 @@ export default function Dashboard() {
             <table className="table">
               <thead><tr><th>Student</th><th>Room</th><th>Dates</th><th>Amount</th><th>Status</th></tr></thead>
               <tbody>
+                {s.recent.length === 0 && <tr><td colSpan="5" className="muted center">No bookings yet.</td></tr>}
                 {s.recent.map((b) => (
                   <tr key={b.booking_id}>
                     <td>{b.student.full_name}</td><td>{b.room.room_number}</td>
@@ -40,6 +41,7 @@ export default function Dashboard() {
         <section className="panel">
           <h2>Recent activity</h2>
           <ul className="log">
+            {s.logs.length === 0 && <li className="muted">Nothing yet.</li>}
             {s.logs.map((l) => (
               <li key={l.log_id}><strong>{l.action}</strong> <span className="muted">#{l.entity_id} · {l.who} · {fmtDate(l.logged_at)}</span></li>
             ))}

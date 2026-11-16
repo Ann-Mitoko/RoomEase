@@ -5,47 +5,92 @@ It runs on its own with a **mock API**, so you can demo it before the backend ex
 
 ## 1. Run it in VS Code
 
-1. Install **Node.js 18+** (https://nodejs.org – pick "LTS"). Check: `node -v`
-2. Unzip the project, then in VS Code: **File → Open Folder… → `roomease-frontend`**
-3. Open the terminal: **Terminal → New Terminal** (shortcut `` Ctrl+` ``)
-4. Install and start:
+1. Install **Node.js 18 or newer** (https://nodejs.org – pick "LTS"). Check: `node -v`
+2. **File → Open Folder…** and choose the project folder, then open the terminal (`` Ctrl+` ``).
+3. Install and start **the website and the payment server together**:
    ```bash
    npm install
-   npm run dev
+   npm run dev:all
    ```
-5. Open http://localhost:5173 (it usually opens by itself). Saving a file refreshes the browser instantly.
+4. Open http://localhost:5173.
 
-Recommended VS Code extensions: **ES7+ React/Redux snippets**, **Prettier**, **ESLint**.
+`npm run dev` starts only the website. `npm run server` starts only the payment server.
 
-### Demo logins
-| Role    | Email / password                    |
-|---------|-------------------------------------|
-| Student | `student@roomease.ke` / `student123`|
-| Admin   | `admin@roomease.ke` / `admin123`    |
+## 2. Accounts (no demo accounts any more)
 
-The login page has one-click buttons for both. Use **"Reset demo data"** in the footer to restore the starting data.
+Everyone registers their own account on the **Register** page and chooses:
 
-## 2. What is built (mapped to the project document)
+- **Client** – books rooms. After signing up you land on the rooms page.
+- **Admin** – manages rooms, bookings and reports. After signing up you land on the admin panel.
+  Admin sign-up needs the **admin access code** in `src/config.js` (`ADMIN_ACCESS_CODE`). Change it and
+  give it only to hostel staff. *Front-end only protection: the real backend must validate admin sign-ups.*
+
+Accounts and bookings are stored in your browser (localStorage) until the real database is connected.
+The footer link **Clear saved data** wipes them.
+
+## 3. M-Pesa payments with Safaricom Daraja (sandbox)
+
+The browser never talks to Safaricom directly (the keys must stay secret). The flow is:
+
+```
+Checkout page ──> our server (server/index.js) ──> Daraja ──> customer's phone
+        ^                      ^                                  │
+        └── polls /api/mpesa/status ── Safaricom callback <───────┘
+```
+
+### One-time setup
+1. Create a free account at https://developer.safaricom.co.ke and log in.
+2. **My Apps → Add a new app**, tick **M-Pesa Sandbox** (Lipa Na M-Pesa / M-Pesa Express) and create it.
+   Copy the app's **Consumer Key** and **Consumer Secret**.
+3. On the portal open **APIs → M-Pesa Express → Simulate** to see the sandbox **Business Shortcode** (`174379`) and **Passkey**.
+4. In the project, copy the template and fill it in:
+   ```bash
+   copy .env.example .env        # Windows (use "cp" on Mac/Linux)
+   ```
+   Put your Consumer Key, Consumer Secret and Passkey into `.env`.
+   **Never commit `.env`** – it must be listed in `.gitignore`.
+5. Run `npm run dev:all`. The server terminal must NOT show the "keys are missing" warning.
+
+### Testing
+- Book a room, go to checkout and pay with the Safaricom sandbox test number **0708 374 149** (PIN `1234` if asked).
+- Sandbox money is simulated – nothing is really charged.
+- With no public callback URL the server asks Safaricom for the result (STK Query), so it works on a laptop.
+  The M-Pesa **receipt number** only arrives through the callback. To get it, expose your server with a tunnel
+  (`ngrok http 5000`) and set `MPESA_CALLBACK_URL` in `.env` (see the comments in `.env.example`).
+- Server terminal lines starting with `[callback]` / `[error]` show what Safaricom answered.
+
+### Going live later
+Switch `MPESA_BASE_URL` to `https://api.safaricom.co.ke`, use the real paybill/till shortcode, passkey and live keys,
+and deploy the server on a host with HTTPS (the callback must be public HTTPS). Also change the frontend to call it:
+set `VITE_API_URL` to the server's address and `FRONTEND_ORIGIN` on the server to the website's address.
+
+## 4. Reports
+
+**Admin → Reports** shows one room at a time: choose a room and a period, press *Generate report*.
+You get occupancy %, nights booked, booked revenue and every booking that touches the period.
+**Download Excel** creates a real `.xlsx` file with a *Summary* sheet and a *Bookings* sheet (with live total formulas).
+
+## 5. What is built (mapped to the project document)
 
 | Requirement | Where |
 |---|---|
-| FR1 register / login / logout / forgot password | `src/pages/Auth.jsx`, `src/context/AuthContext.jsx` |
+| FR1 register (client / admin) / login / logout / forgot password | `src/pages/Auth.jsx`, `src/context/AuthContext.jsx` |
 | FR2 search by room type, price, dates | `src/components/SearchBar.jsx`, `src/pages/Home.jsx` |
 | Room details page + booking form | `src/pages/RoomDetails.jsx` |
-| FR3 booking + M-Pesa (STK Push simulation) | `src/pages/Checkout.jsx`, `src/pages/MyBookings.jsx` |
+| FR3 booking + M-Pesa STK Push (Daraja) | `src/pages/Checkout.jsx`, `server/`, `src/pages/MyBookings.jsx` |
 | FR4 admin: add / edit / delete rooms | `src/pages/admin/Rooms.jsx` |
-| FR5 admin: approve / cancel bookings, occupancy report (+CSV export) | `src/pages/admin/Bookings.jsx`, `Reports.jsx` |
-| NFR1 fast search results | loading skeletons; results come back in ~200 ms (mock) |
-| NFR3 responsive | one stylesheet, tested at 390 px (phone) and 1440 px (desktop) |
+| FR5 admin: approve / cancel bookings, per-room report + Excel | `src/pages/admin/Bookings.jsx`, `Reports.jsx` |
+| NFR3 responsive | one stylesheet, tested at phone and desktop widths |
 
-Screens follow Ann's mockups: Register, Login, Search rooms (Home), Room details & booking, M-Pesa payment, My bookings, Admin dashboard, Manage rooms, Manage bookings, Occupancy report.
-
-## 3. Folder map
+## 6. Folder map
 
 ```
 src/
-  api/mockApi.js        ← ALL data access. Replace with fetch() calls when the backend is ready
-  data/seed.js          ← demo rooms / users / bookings (same fields as roomease_db)
+  api/mockApi.js        ← ALL data access (still mock). Replace with fetch() calls when the backend is ready
+  config.js             ← admin access code
+server/                 ← Daraja payment server (Express): index.js routes, daraja.js Safaricom calls
+.env.example            ← template for your secret keys (copy to .env)
+  data/seed.js          ← starter rooms and room types (same fields as roomease_db)
   context/AuthContext   ← who is logged in
   components/           ← Header, SearchBar, RoomCard, RoomImage, Modal, ...
   pages/                ← student pages;  pages/admin/ = admin panel
@@ -53,7 +98,7 @@ src/
   index.css             ← the whole theme (colour tokens at the top)
 ```
 
-## 4. Connecting the real backend later
+## 7. Connecting the real backend later
 
 Every function in `src/api/mockApi.js` has a comment with the endpoint it stands for, e.g.
 
@@ -69,21 +114,22 @@ export async function searchRooms(filters) {
 }
 ```
 Keep the same function names and return shapes and no page needs to change.
-For M-Pesa: the backend calls Daraja STK Push and receives Safaricom's callback; the UI then polls
-`GET /api/payments/:id` until the status is `success` or `failed` (see `Checkout.jsx`).
+The M-Pesa part already talks to a real server (`server/`). In the real system, payments should be saved in the `payments` table instead of the server's memory.
 
-## 5. Things the team should decide / know
+## 8. Things the team should decide / know
 
 - **Price is per night** (schema: `price_per_night`). The hand-drawn mockup shows "22k" – confirm whether the hostel prices per night or per semester.
 - **Fields not yet in the schema** (used only for the card design): `rating`, `reviews_count`, `guest_favorite`, `amenities`, `images`. Either add them to `rooms` or drop them from the UI.
 - **Photos:** rooms show illustrated placeholders. To use real photos, put images in `public/rooms/` and set `images: ['/rooms/a101-1.jpg']` on the room.
-- **Passwords** in the mock are plain text *only* for the demo. The real backend must store `password_hash` (bcrypt/argon2) – NFR2.
+- **Passwords** are salted and hashed (SHA-256) in the browser mock. The real backend must use bcrypt/argon2 – NFR2.
 - **Booking status flow:** student books → `pending` → pays → admin `approved` / `cancelled`. Cancelled bookings free the room's dates.
 
-## 6. Handy commands
+## 9. Handy commands
 
 ```bash
-npm run dev       # development server
+npm run dev:all   # website + payment server
+npm run dev       # website only
+npm run server    # payment server only
 npm run build     # production build into dist/
 npm run preview   # serve the production build locally
 ```

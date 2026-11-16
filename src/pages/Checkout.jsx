@@ -19,7 +19,9 @@ export default function Checkout() {
   const [phoneErr, setPhoneErr] = useState('');
   const [stage, setStage] = useState('idle'); // idle | sending | waiting | success | failed
   const [payment, setPayment] = useState(null);
+  const [failMsg, setFailMsg] = useState('');
   const timer = useRef(null);
+  const attempts = useRef(0);
 
   useEffect(() => {
     api.getBooking(bookingId, user).then(setBooking).catch((e) => setError(e.message));
@@ -33,20 +35,36 @@ export default function Checkout() {
   const nights = nightsBetween(booking.check_in, booking.check_out);
   const alreadyPaid = booking.payment?.status === 'success';
 
+  // Ask our Daraja server every 3 seconds whether the customer has paid (it hears back from Safaricom).
+  const poll = (paymentId) => {
+    timer.current = setTimeout(async () => {
+      attempts.current += 1;
+      try {
+        const res = await api.checkPayment(paymentId);
+        setPayment(res);
+        if (res.status === 'success') return setStage('success');
+        if (res.status === 'failed') { setFailMsg(res.failure_reason || res.message || ''); return setStage('failed'); }
+      } catch (e) {
+        if (/Unknown payment/i.test(e.message)) { setFailMsg(e.message); return setStage('failed'); }
+        // otherwise a short network hiccup: keep trying
+      }
+      if (attempts.current > 45) { setFailMsg('We did not get a response from M-Pesa in time. If money left your account, contact the hostel admin with your phone number.'); return setStage('failed'); }
+      poll(paymentId);
+    }, 3000);
+  };
+
   const pay = async () => {
     const p = normalizePhone(phone);
     if (!p) return setPhoneErr('Enter a valid Safaricom number, e.g. 0712 345 678');
     setPhoneErr('');
+    setFailMsg('');
     setStage('sending');
+    attempts.current = 0;
     try {
-      const pay = await api.startPayment(booking.booking_id, p);
-      setPayment(pay);
+      const started = await api.startPayment(booking.booking_id, p); // sends the STK Push through Daraja
+      setPayment(started);
       setStage('waiting');
-      // Real app: poll GET /api/payments/:id until the Daraja callback marks it success/failed.
-      timer.current = setTimeout(async () => {
-        setPayment(await api.completePayment(pay.payment_id, 'success'));
-        setStage('success');
-      }, 4500);
+      poll(started.payment_id);
     } catch (e) {
       setPhoneErr(e.message);
       setStage('idle');
@@ -55,7 +73,8 @@ export default function Checkout() {
 
   const cancelPrompt = async () => {
     clearTimeout(timer.current);
-    if (payment) setPayment(await api.completePayment(payment.payment_id, 'failed'));
+    if (payment) await api.cancelPayment(payment.payment_id);
+    setFailMsg('You cancelled the payment. You can try again whenever you are ready.');
     setStage('failed');
   };
 
@@ -69,7 +88,7 @@ export default function Checkout() {
             <h2>Pay with M-Pesa</h2>
             <p className="muted">We’ll send an M-Pesa prompt (STK Push) to your phone. Enter your PIN to approve it.</p>
             {alreadyPaid ? (
-              <div className="alert ok"><CheckIcon /> This booking is already paid. Receipt <strong>{booking.payment.mpesa_receipt_no}</strong></div>
+              <div className="alert ok"><CheckIcon /> This booking is already paid.{booking.payment.mpesa_receipt_no && <> Receipt <strong>{booking.payment.mpesa_receipt_no}</strong></>}</div>
             ) : booking.status === 'cancelled' ? (
               <div className="alert error">This booking was cancelled and can no longer be paid.</div>
             ) : (
@@ -80,7 +99,7 @@ export default function Checkout() {
                   </div>
                 </label>
                 {phoneErr && <p className="alert error">{phoneErr}</p>}
-                {stage === 'failed' && <p className="alert error">Payment was not completed. You can try again.</p>}
+                {stage === 'failed' && <p className="alert error">{failMsg || 'Payment was not completed. You can try again.'}</p>}
                 <button className="btn mpesa block" onClick={pay} disabled={stage === 'sending'}>
                   {stage === 'sending' ? 'Contacting M-Pesa…' : `Pay ${money(booking.total_amount)} with M-Pesa`}
                 </button>
@@ -114,9 +133,8 @@ export default function Checkout() {
           <div className="stk">
             <div className="spinner" />
             <p><strong>Enter your M-Pesa PIN</strong></p>
-            <p className="muted">We sent a payment request of {money(booking.total_amount)} to <strong>+{normalizePhone(phone)}</strong>. Waiting for confirmation…</p>
-            <button className="btn" onClick={cancelPrompt}>I cancelled the prompt</button>
-            <p className="muted small">(Demo: the payment auto-succeeds after a few seconds.)</p>
+            <p className="muted">We sent a payment request of {money(booking.total_amount)} to <strong>+{normalizePhone(phone)}</strong>. Waiting for M-Pesa to confirm…</p>
+            <button className="btn" onClick={cancelPrompt}>Stop waiting / cancel</button>
           </div>
         </Modal>
       )}
@@ -126,7 +144,7 @@ export default function Checkout() {
           <div className="stk">
             <div className="tick"><CheckIcon width={34} height={34} strokeWidth={3} /></div>
             <h2>Thank you!</h2>
-            <p>M-Pesa receipt <strong>{payment?.mpesa_receipt_no}</strong></p>
+            {payment?.mpesa_receipt_no ? <p>M-Pesa receipt <strong>{payment.mpesa_receipt_no}</strong></p> : <p>Your M-Pesa payment was confirmed.</p>}
             <p className="muted">Your booking for room {room.room_number} is now awaiting approval by the hostel admin. You’ll see the status in “My bookings”.</p>
             <button className="btn primary block" onClick={() => navigate('/my-bookings')}>View my bookings</button>
           </div>
