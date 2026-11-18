@@ -52,11 +52,6 @@ export function Login() {
       <p className="center"><Link to="/forgot-password" className="link">Forgot password?</Link></p>
       <hr />
       <p className="center muted">New here? <Link to="/register" className="link strong">Create an account</Link></p>
-      <div className="demo-box">
-        <strong>Demo accounts</strong>
-        <button type="button" onClick={() => { setIdentifier('student@roomease.ke'); setPassword('student123'); }}>Student · student@roomease.ke / student123</button>
-        <button type="button" onClick={() => { setIdentifier('admin@roomease.ke'); setPassword('admin123'); }}>Admin · admin@roomease.ke / admin123</button>
-      </div>
     </AuthShell>
   );
 }
@@ -64,7 +59,7 @@ export function Login() {
 export function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
-  const [f, setF] = useState({ full_name: '', email: '', phone: '', password: '', confirm: '' });
+  const [f, setF] = useState({ role: 'student', admin_code: '', full_name: '', email: '', phone: '', password: '', confirm: '' });
   const [errors, setErrors] = useState({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -78,6 +73,7 @@ export function Register() {
     if (f.phone && !normalizePhone(f.phone)) er.phone = 'Enter a valid number, e.g. 0712 345 678';
     if (f.password.length < 8) er.password = 'Use at least 8 characters';
     if (f.confirm !== f.password) er.confirm = 'Passwords do not match';
+    if (f.role === 'admin' && !f.admin_code.trim()) er.admin_code = 'Enter the admin access code';
     setErrors(er);
     return Object.keys(er).length === 0;
   };
@@ -88,8 +84,12 @@ export function Register() {
     if (!validate()) return;
     setBusy(true);
     try {
-      await register({ full_name: f.full_name.trim(), email: f.email.trim() || null, phone: f.phone ? normalizePhone(f.phone) : null, password: f.password });
-      navigate('/', { replace: true });
+      const u = await register({
+        full_name: f.full_name.trim(), email: f.email.trim() || null, phone: f.phone ? normalizePhone(f.phone) : null,
+        password: f.password, role: f.role, admin_code: f.admin_code.trim(),
+      });
+      // clients go to the rooms page, admins go to the admin panel
+      navigate(u.role === 'admin' ? '/admin' : '/', { replace: true });
     } catch (err) { setError(err.message); setBusy(false); }
   };
 
@@ -98,13 +98,31 @@ export function Register() {
   return (
     <AuthShell title="Register" subtitle="Create your RoomEase account">
       <form onSubmit={submit} noValidate>
+        <fieldset className="role-pick">
+          <legend>I am signing up as</legend>
+          <div className="role-grid">
+          <label className={`role-card ${f.role === 'student' ? 'on' : ''}`}>
+            <input type="radio" name="role" value="student" checked={f.role === 'student'} onChange={set('role')} />
+            <span className="role-emoji">🎓</span><strong>Client</strong><small>I want to find and book a room</small>
+          </label>
+          <label className={`role-card ${f.role === 'admin' ? 'on' : ''}`}>
+            <input type="radio" name="role" value="admin" checked={f.role === 'admin'} onChange={set('role')} />
+            <span className="role-emoji">🛠️</span><strong>Admin</strong><small>I manage rooms and bookings</small>
+          </label>
+          </div>
+        </fieldset>
+        {f.role === 'admin' && (
+          <>
+            <Field label="Admin access code" value={f.admin_code} onChange={set('admin_code')} placeholder="Given to you by the hostel manager" autoComplete="off" /><E k="admin_code" />
+          </>
+        )}
         <Field label="Full name" value={f.full_name} onChange={set('full_name')} autoComplete="name" /><E k="full_name" />
         <Field label="Email" type="email" value={f.email} onChange={set('email')} autoComplete="email" /><E k="email" />
         <Field label="Phone number (+254)" inputMode="tel" placeholder="0712 345 678" value={f.phone} onChange={set('phone')} autoComplete="tel" /><E k="phone" />
         <Field label="Password" type="password" value={f.password} onChange={set('password')} autoComplete="new-password" /><E k="password" />
         <Field label="Confirm password" type="password" value={f.confirm} onChange={set('confirm')} autoComplete="new-password" /><E k="confirm" />
         {error && <p className="alert error">{error}</p>}
-        <button className="btn primary block" disabled={busy}>{busy ? 'Creating account…' : 'Register'}</button>
+        <button className="btn primary block" disabled={busy}>{busy ? 'Creating account…' : f.role === 'admin' ? 'Register as admin' : 'Register'}</button>
       </form>
       <hr />
       <p className="center muted">Already have an account? <Link to="/login" className="link strong">Log in</Link></p>

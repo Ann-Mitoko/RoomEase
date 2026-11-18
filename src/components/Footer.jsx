@@ -6,8 +6,8 @@ export default function Footer() {
       <div className="footer-inner">
         <span>© 2026 RoomEase · ICS 2201 Group 9</span>
         <span className="footer-links">
-          <span>Demo mode – data is stored in your browser</span>
-          <button className="link" onClick={() => { resetDemoData(); window.location.href = '/'; }}>Reset demo data</button>
+          <span>Prototype – accounts and bookings are saved in this browser only</span>
+          <button className="link" onClick={() => { if (window.confirm('This deletes all accounts and bookings saved in this browser. Continue?')) { resetDemoData(); window.location.href = '/'; } }}>Clear saved data</button>
         </span>
       </div>
     </footer>
