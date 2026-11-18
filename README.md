@@ -1,7 +1,17 @@
-# RoomEase – Front-end (React + Vite)
+# RoomEase – React + PHP + MySQL
 
 Airbnb-style front-end for **RoomEase – Online Hostel Booking and Management System** (ICS 2201, Group 9).
-It runs on its own with a **mock API**, so you can demo it before the backend exists.
+The room browser now reads room types and room data from MySQL through a small PHP JSON API. Login, bookings, payments, and admin screens still use the browser mock API.
+
+## Quick database demo (XAMPP)
+
+1. Copy this whole `RoomEase-main` folder into `C:\xampp\htdocs\RoomEase-main`.
+2. In XAMPP Control Panel, start **Apache** and **MySQL**.
+3. Open `http://localhost/phpmyadmin`, create/import the database by importing `schema.sql` first and `seed.sql` second. `schema.sql` drops and recreates the project tables, so import it only when you are ready to reset them.
+4. In the copied folder, run `npm install`, then `npm run dev` and open the Vite address (normally `http://localhost:3001`).
+5. The home page should show rooms from the SQL seed. PHP API: `http://localhost/RoomEase-main/api.php?resource=rooms`.
+
+The PHP MySQL settings are in `config.php` (XAMPP's default local `root` user with an empty password). Change these if your MySQL setup uses a password.
 
 ## 1. Run it in VS Code
 

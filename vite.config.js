@@ -3,5 +3,15 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  server: { port: 3001, open: true },
+  server: {
+    port: 3001,
+    open: true,
+    proxy: {
+      '/backend': {
+        target: 'http://localhost/RoomEase-main',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/backend/, ''),
+      },
+    },
+  },
 });

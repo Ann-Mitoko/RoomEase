@@ -46,6 +46,26 @@ async function hashPassword(password, salt) {
 }
 const fail = (message) => { throw new Error(message); };
 
+async function backendGet(params) {
+  const query = new URLSearchParams(params);
+  const response = await fetch(`/backend/api.php?${query}`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || 'Could not load data from the database.');
+  return data;
+}
+
+async function backendWrite(method, params, body) {
+  const query = new URLSearchParams(params);
+  const response = await fetch(`/backend/api.php?${query}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || 'The database request failed.');
+  return data;
+}
+
 function audit(user_id, action, entity, entity_id) {
   db().audit_logs.push({ log_id: nextId('audit_logs', 'log_id'), user_id, action, entity, entity_id, logged_at: today() });
 }
@@ -127,63 +147,34 @@ export async function forgotPassword() {
 
 // GET /api/room-types
 export async function listRoomTypes() {
-  return db().room_types.map((t) => ({ ...t }));
+  return backendGet({ resource: 'room-types' });
 }
 
 // GET /api/rooms?type_id=&max_price=&check_in=&check_out=
 export async function searchRooms({ type_id, max_price, check_in, check_out } = {}) {
-  await delay(200);
-  return db().rooms
-    .filter((r) => r.status === 'active')
-    .filter((r) => !type_id || r.type_id === Number(type_id))
-    .filter((r) => !max_price || r.price_per_night <= Number(max_price))
-    .filter((r) => !(check_in && check_out) || isFree(r.room_id, check_in, check_out))
-    .map(withType);
+  return backendGet({ resource: 'rooms', type_id: type_id || '', max_price: max_price || '', check_in: check_in || '', check_out: check_out || '' });
 }
 
 // GET /api/rooms/:id
 export async function getRoom(id) {
-  await delay(150);
-  const room = db().rooms.find((r) => r.room_id === Number(id));
-  if (!room) fail('Room not found.');
-  return { ...withType(room), booked: bookedRanges(room.room_id) };
+  return backendGet({ resource: 'room', id: String(id) });
 }
 
 /* ------------------------ BOOKING & PAYMENT (FR3) ------------------------ */
 
 // POST /api/bookings   { room_id, check_in, check_out }   (user comes from the auth token)
 export async function createBooking({ user_id, room_id, check_in, check_out }) {
-  await delay(400);
-  const room = db().rooms.find((r) => r.room_id === Number(room_id));
-  if (!room || room.status !== 'active') fail('This room is not available for booking.');
-  const nights = nightsBetween(check_in, check_out);
-  if (nights < 1) fail('Check-out must be after check-in.');
-  if (check_in < today()) fail('Check-in cannot be in the past.');
-  if (!isFree(room.room_id, check_in, check_out)) fail('Sorry, those dates were just taken. Please pick other dates.');
-  const b = {
-    booking_id: nextId('bookings', 'booking_id'), user_id, room_id: room.room_id, check_in, check_out,
-    total_amount: nights * room.price_per_night, status: 'pending', approved_by: null, created_at: today(),
-  };
-  db().bookings.push(b);
-  save();
-  return hydrateBooking(b);
+  return backendWrite('POST', { resource: 'bookings' }, { user_id, room_id, check_in, check_out });
 }
 
 // GET /api/bookings/:id
 export async function getBooking(id, user) {
-  await delay(150);
-  const b = db().bookings.find((x) => x.booking_id === Number(id));
-  if (!b || (user.role !== 'admin' && b.user_id !== user.user_id)) fail('Booking not found.');
-  return hydrateBooking(b);
+  return backendGet({ resource: 'booking', id: String(id), user_id: String(user.user_id), role: user.role });
 }
 
 // GET /api/bookings/mine   (booking history)
 export async function myBookings(user_id) {
-  await delay(250);
-  return db().bookings
-    .filter((b) => b.user_id === user_id)
-    .sort((a, z) => z.booking_id - a.booking_id)
-    .map(hydrateBooking);
+  return backendGet({ resource: 'my-bookings', user_id: String(user_id) });
 }
 
 // PATCH /api/bookings/:id/cancel
@@ -270,62 +261,28 @@ export async function cancelPayment(payment_id) {
 
 // GET /api/admin/rooms
 export async function adminListRooms() {
-  await delay(200);
-  return db().rooms.map(withType);
+  return backendGet({ resource: 'admin-rooms' });
 }
 
 // POST /api/admin/rooms  |  PUT /api/admin/rooms/:id
 export async function adminSaveRoom(room, adminId) {
-  await delay(300);
-  const dupe = db().rooms.find((r) => r.room_number.toLowerCase() === room.room_number.toLowerCase() && r.room_id !== room.room_id);
-  if (dupe) fail(`Room number ${room.room_number} already exists.`);
-  if (!(Number(room.price_per_night) > 0)) fail('Price must be greater than 0.');
-  const clean = {
-    ...room, type_id: Number(room.type_id), price_per_night: Number(room.price_per_night), capacity: Number(room.capacity),
-  };
-  if (room.room_id) {
-    const i = db().rooms.findIndex((r) => r.room_id === room.room_id);
-    db().rooms[i] = { ...db().rooms[i], ...clean };
-    audit(adminId, 'Updated room', 'room', room.room_id);
-  } else {
-    clean.room_id = nextId('rooms', 'room_id');
-    Object.assign(clean, { amenities: ['Fast Wi-Fi', '24/7 water'], rating: 4.5, reviews_count: 0, guest_favorite: false, images: [] });
-    db().rooms.push(clean);
-    audit(adminId, 'Added room', 'room', clean.room_id);
-  }
-  save();
+  const method = room.room_id ? 'PUT' : 'POST';
+  return backendWrite(method, { resource: 'admin-rooms' }, room);
 }
 
 // DELETE /api/admin/rooms/:id
 export async function adminDeleteRoom(room_id, adminId) {
-  await delay(300);
-  if (db().bookings.some((b) => b.room_id === room_id)) {
-    fail('This room has booking history and cannot be deleted. Set it to "maintenance" instead.');
-  }
-  db().rooms = db().rooms.filter((r) => r.room_id !== room_id);
-  audit(adminId, 'Removed room', 'room', room_id);
-  save();
+  return backendWrite('DELETE', { resource: 'admin-rooms', id: String(room_id) }, null);
 }
 
 // GET /api/admin/bookings?status=
 export async function adminListBookings(status) {
-  await delay(250);
-  return db().bookings
-    .filter((b) => !status || b.status === status)
-    .sort((a, z) => z.booking_id - a.booking_id)
-    .map(hydrateBooking);
+  return backendGet({ resource: 'admin-bookings', status: status || '' });
 }
 
 // PATCH /api/admin/bookings/:id   { status: 'approved' | 'cancelled' }
 export async function adminSetBookingStatus(booking_id, status, adminId) {
-  await delay(300);
-  const b = db().bookings.find((x) => x.booking_id === booking_id);
-  if (!b) fail('Booking not found.');
-  b.status = status;
-  b.approved_by = status === 'approved' ? adminId : null;
-  audit(adminId, status === 'approved' ? 'Approved booking' : 'Cancelled booking', 'booking', booking_id);
-  save();
-  return hydrateBooking(b);
+  return backendWrite('PATCH', { resource: 'admin-booking', id: String(booking_id) }, { status, admin_id: adminId });
 }
 
 // GET /api/admin/stats
